@@ -1,13 +1,14 @@
 import * as ct from 'electron';
 import * as fs from 'fs';
+import process from 'process';
 import path from 'path';
 import argsParser from 'yargs-parser';
 import { Variables, ExportSetting, extractDefaultExtension as extractExtension, createEnv } from './settings';
 import { MessageBox } from './ui/message_box';
 import { Notice, TFile } from 'obsidian';
-import { exec, renderTemplate, getPlatformValue } from './utils';
+import { exec, renderTemplate, getPlatformValue, trimQuotes } from './utils';
 import type ExportPlugin from './main';
-import { normalizePandocPath } from './pandoc';
+import pandoc from './pandoc';
 
 export async function exportToOo(
   plugin: ExportPlugin,
@@ -73,6 +74,8 @@ export async function exportToOo(
     attachmentFolderPath = vaultDir;
   } else if (attachmentFolderPath.startsWith('.')) {
     attachmentFolderPath = path.join(currentDir, attachmentFolderPath.substring(1));
+  } else {
+    attachmentFolderPath = path.join(vaultDir, attachmentFolderPath);
   }
 
   let frontMatter: unknown = null;
@@ -100,6 +103,7 @@ export async function exportToOo(
     // now: new Date()
     metadata: frontMatter,
     options,
+    fromFormat: app.vault.config.useMarkdownLinks ? 'markdown' : 'markdown+wikilinks_title_after_pipe',
   };
 
   const showCommandLineOutput = setting.type === 'custom' && setting.showCommandOutput;
@@ -149,11 +153,31 @@ export async function exportToOo(
   // process Environment variables..
   const env = (variables.env = createEnv(getPlatformValue(globalSetting.env) ?? {}, variables));
 
-  const pandocPath = normalizePandocPath(getPlatformValue(globalSetting.pandocPath));
+  let pandocPath = pandoc.normalizePath(getPlatformValue(globalSetting.pandocPath));
+
+  if (process.platform === 'win32') {
+    // https://github.com/mokeyish/obsidian-enhancing-export/issues/153
+    pandocPath = pandocPath.replaceAll('\\', '/');
+    const pathKeys: Array<keyof Variables> = [
+      'pluginDir',
+      'luaDir',
+      'outputDir',
+      'outputPath',
+      'currentDir',
+      'currentPath',
+      'attachmentFolderPath',
+      'vaultDir',
+    ];
+
+    for (const pathKey of pathKeys) {
+      const path = variables[pathKey] as string;
+      variables[pathKey] = path.replaceAll('\\', '/');
+    }
+  }
 
   const cmdTpl =
     setting.type === 'pandoc'
-      ? `${pandocPath} ${setting.arguments ?? ''} ${setting.customArguments ?? ''} "${currentPath}"`
+      ? `${pandocPath} "\${currentPath}" ${setting.arguments ?? ''} ${setting.customArguments ?? ''}`
       : setting.command;
 
   const cmd = renderTemplate(cmdTpl, variables);
@@ -162,11 +186,7 @@ export async function exportToOo(
       output: ['o'],
     },
   });
-  const actualOutputPath = path.normalize(
-    (args.output.startsWith('"') && args.output.endsWith('"')) || (args.output.startsWith("'") && args.output.endsWith("'"))
-      ? args.output.substring(1, args.output.length - 1)
-      : args.output
-  );
+  const actualOutputPath = path.normalize(trimQuotes(args.output));
 
   const actualOutputDir = path.dirname(actualOutputPath);
   if (!fs.existsSync(actualOutputDir)) {

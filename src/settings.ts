@@ -117,6 +117,7 @@ export const DEFAULT_ENV = (() => {
     env,
     {
       'TEXINPUTS': '${pluginDir}/textemplate/;', // Windows uses ; rather than : for appending
+      'PATH': '${HOME}\\AppData\\Local\\Pandoc;${PATH}',
     },
     'win32' // available for windows only.
   );

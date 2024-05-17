@@ -40,6 +40,13 @@ const Dialog = (props: { plugin: UniversalExportPlugin, currentFile: TFile, onCl
 
   const exportTypes = globalSetting.items.map(o => ({ name: o.name, value: o.name }));
 
+  if (globalSetting.defaultExportDirectoryMode === 'Same') {
+    const path = currentFile.vault.adapter.getBasePath() + '/' + currentFile.parent.path;
+    setCandidateOutputDirectory(path);
+  } else if (globalSetting.defaultExportDirectoryMode === 'Custom') {
+    setCandidateOutputDirectory(getPlatformValue(globalSetting.customDefaultExportDirectory));
+  }
+  
   const chooseFolder = async () => {
     const retval = await ct.remote.dialog.showOpenDialog({
       title: lang.exportDialog.selectExportFolder,
